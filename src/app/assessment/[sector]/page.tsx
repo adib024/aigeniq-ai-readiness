@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Sector, SECTOR_LABELS, AnswerValue, Answers, ContextAnswers, DimensionId } from '../../../types';
+import { Sector, SECTOR_LABELS, AnswerValue, Answers, ContextAnswers } from '../../../types';
 import { contextQuestions, buildQuestionSet } from '../../../lib/config/questions.config';
 import { evaluateBranching } from '../../../lib/engine/branch';
 import { calculateScore } from '../../../lib/engine/score';
@@ -45,15 +45,15 @@ export default function AssessmentPage() {
     const currentScoredQ = visibleQuestions[currentQuestionIndex];
 
     // Progress calculation
-    const totalContextQs = filteredContextQuestions.length;
+    // const totalContextQs = filteredContextQuestions.length;
     const totalScoredQs = visibleQuestions.length;
     
     // Overall Progress %
-    const overallProgress = phase === 'context'
+    /* const overallProgress = phase === 'context'
         ? (contextIndex / (totalContextQs + totalScoredQs)) * 100
         : phase === 'assessment'
             ? ((totalContextQs + currentQuestionIndex) / (totalContextQs + totalScoredQs)) * 100
-            : 100;
+            : 100; */
 
     // Phase Labels based on Power 25 structure
     const getPhaseLabel = () => {
@@ -327,7 +327,7 @@ export default function AssessmentPage() {
                                 <div className={`p-6 bg-white/5 border-l-4 border-[var(--green)] transition-all duration-700 overflow-hidden ${showTip ? 'max-h-[300px] opacity-100 mt-6 translate-y-0' : 'max-h-0 opacity-0 mt-0 translate-y-4'}`}>
                                     <div className="text-[10px] font-mono text-white/50 uppercase mb-2 tracking-[2px]">Consultant Insight</div>
                                     <p className="text-base font-bold text-[var(--green)] leading-tight italic uppercase tracking-tight">
-                                        "{currentTip}"
+                                        &quot;{currentTip}&quot;
                                     </p>
                                 </div>
                             </div>
