@@ -1,14 +1,17 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Sector, SECTOR_LABELS, AnswerValue, Answers, ContextAnswers } from '../../../types';
 import { contextQuestions, buildQuestionSet } from '../../../lib/config/questions.config';
 import { evaluateBranching } from '../../../lib/engine/branch';
 import { calculateScore } from '../../../lib/engine/score';
 import { selectRecommendations, buildPriorityMatrix } from '../../../lib/engine/recommend';
+import { getLiveBenchmark, BenchmarkData } from '../../../lib/engine/benchmark';
+import OracleAvatar from '../../../components/OracleAvatar';
 
-type Phase = 'context' | 'assessment' | 'complete';
+type Phase = 'intro' | 'context' | 'assessment' | 'milestone' | 'complete';
 
 export default function AssessmentPage() {
     const params = useParams();
@@ -17,7 +20,7 @@ export default function AssessmentPage() {
     const sectorLabel = SECTOR_LABELS[sector] || sector;
 
     // State
-    const [phase, setPhase] = useState<Phase>('context');
+    const [phase, setPhase] = useState<Phase>('intro');
     const [contextIndex, setContextIndex] = useState(0);
     const [contextAnswersState, setContextAnswersState] = useState<Record<string, string | string[]>>({});
     const [answers, setAnswers] = useState<Answers>({});
@@ -25,6 +28,8 @@ export default function AssessmentPage() {
     const [animating, setAnimating] = useState(false);
     const [showTip, setShowTip] = useState(false);
     const [currentTip, setCurrentTip] = useState('');
+    const [oracleState, setOracleState] = useState<'idle' | 'warning' | 'thinking' | 'success'>('idle');
+    const [benchmark, setBenchmark] = useState<BenchmarkData>({ averageScore: 35, count: 0, percentile: 50 });
 
     // Load specialized question set for this sector
     const allQuestions = useMemo(() => buildQuestionSet(sector), [sector]);
@@ -57,6 +62,7 @@ export default function AssessmentPage() {
 
     // Phase Labels based on Power 25 structure
     const getPhaseLabel = () => {
+        if (phase === 'intro') return 'CONNECTING...';
         if (phase === 'context') return '00: THE SETUP';
         if (currentQuestionIndex < 5) return '01: FOUNDATIONS';
         if (currentQuestionIndex < 10) return '02: STRATEGY & RISK';
@@ -64,11 +70,16 @@ export default function AssessmentPage() {
         return '04: VALUE & VISION';
     };
 
-    // Live Readiness Meter (0-100)
+    // Fetch live benchmarks on load
+    useEffect(() => {
+        getLiveBenchmark(sector, 0).then(setBenchmark);
+    }, [sector]);
+    
+    // Calculate a "Live Readiness Score" for the gamified meter
     const liveScore = useMemo(() => {
         if (Object.keys(answers).length === 0) return 0;
         const result = calculateScore(answers, sector);
-        return result.finalScore * 10; 
+        return result.finalScore * 10; // 0-100 scale
     }, [answers, sector]);
 
     // ─── CONTEXT ANSWER HANDLER ───
@@ -89,18 +100,39 @@ export default function AssessmentPage() {
         }, 400);
     }, [contextIndex, currentContextQ, filteredContextQuestions.length]);
 
-    // ─── TIPS ENGINE ───
-    const getTipForAnswer = (qName: string, letter: string) => {
-        const tips: Record<string, string> = {
-            'Data & Knowledge_A': 'Knowledge silos cost businesses 20% in productivity loss. AI can bridge this gap.',
-            'Data & Knowledge_D': 'Excellent: Clear knowledge capture is the first step to building internal AI agents.',
-            'Process Maturity_A': 'Begin with documentation: AI needs clear step-by-step logic to be effective.',
-            'Leadership & Strategy_A': 'Common Pitfall: AI succeeds 3x more often when led by a dedicated owner.',
-            'Governance & Risk_A': 'Urgent: Public AI tools are one of the biggest risks for data leaks today.',
-            'AI Usage_D': 'Top Tier: Embedding AI in workflows is the ultimate competitive advantage.',
-            'Value & ROI_D': 'Strategic Lead: Measuring outcomes ensures your AI budget delivers real impact.'
+    // ─── UPGRADED INSIGHT ENGINE (THE BRAIN) ───
+    const getTipForAnswer = (dim: string, letter: string, sector: Sector) => {
+        const baseTips: Record<string, string> = {
+            'D1_A': 'Critical: Knowledge silos are costing you 20%+ in productivity. AI can bridge this gap.',
+            'D1_D': 'Excellent: You have the "Data Moat" required for high-end custom AI training.',
+            'D2_A': 'Warning: 70% of AI projects fail without a dedicated owner. You need an AI Lead.',
+            'D2_D': 'Elite Tier: Leadership-led AI adoption is the strongest predictor of long-term ROI.',
+            'D3_A': 'Security Alert: "Shadow AI" is your biggest risk. Employees are likely inputting client data into public tools.',
+            'D3_D': 'Safety First: Having an AI Policy allows your team to innovate without risking your IP.',
+            'D4_A': 'Cultural Gap: Upskilling is faster than hiring. Start an internal AI Champions program.',
+            'D5_A': 'Process Block: AI cannot automate what is not documented. Map your workflows first.',
+            'D6_A': 'Passive Phase: Basic tool usage (ChatGPT) is just the start. Integrated AI is where the value is.',
+            'D8_A': 'Value Leak: Without an ROI framework, you are spending on AI, not investing in it.'
         };
-        return tips[`${qName}_${letter}`] || 'Expert insight logged. This helps build your custom ROI Roadmap.';
+
+        // Sector-Specific Overrides (The "Gold" Insights)
+        const sectorOverrides: Record<string, Record<string, string>> = {
+            'creative_agency': {
+                'D1_A': 'Agency Alert: Your project archives are a goldmine. Without centralizing them, you are losing billable speed.',
+                'D6_A': 'Creative Edge: Generative AI can cut asset production time by 40%. Start with repetitive edits.',
+            },
+            'professional_services': {
+                'D1_A': 'Consultant Risk: Your institutional knowledge is walking out the door whenever a senior partner leaves.',
+                'D3_A': 'Regulator Warning: Professional services are under scrutiny for AI data bias. Ensure local storage.',
+            },
+            'tech_software': {
+                'D5_A': 'Dev Warning: Process debt is AI debt. Clean your documentation before deploying AI agents.',
+                'D7_A': 'Legacy Load: Outdated APIs will choke your AI innovation. Focus on integration first.',
+            }
+        };
+
+        const tip = sectorOverrides[sector]?.[`${dim}_${letter}`] || baseTips[`${dim}_${letter}`] || 'Insight Logged: This data point is critical for your 90-day roadmap.';
+        return tip;
     };
 
     // ─── SCORED ANSWER HANDLER ───
@@ -108,19 +140,41 @@ export default function AssessmentPage() {
         const qId = currentScoredQ.id;
         const newAnswers = { ...answers, [qId]: answer };
         
+        // Trigger Oracle Thinking
+        setOracleState('thinking');
+        
         setAnswers(newAnswers);
-        setCurrentTip(getTipForAnswer(currentScoredQ.dimensionName, answer));
+        const tip = getTipForAnswer(currentScoredQ.dimensionId, answer, sector);
+        setCurrentTip(tip);
         setShowTip(true);
 
+        // Analyze sentiment (Warning vs Success)
+        if (answer === 'A') setOracleState('warning');
+        else if (answer === 'D') setOracleState('success');
+        else setOracleState('idle');
+
+        // Pause to show the tip (Gamification)
         setTimeout(() => {
             setShowTip(false);
             setAnimating(true);
+            setOracleState('thinking');
             
             setTimeout(() => {
                 const { visibleQuestions: newVisible } = evaluateBranching(allQuestions, newAnswers);
 
+                // Check for Phase Complete (Milestone)
+                const currentPhase = getPhaseLabel();
+                
                 if (currentQuestionIndex < newVisible.length - 1) {
                     setCurrentQuestionIndex(prev => prev + 1);
+                    
+                    // Transition to Milestone if phase just changed
+                    // (Logic: If next question is 5, 10, or 16 - based on getPhaseLabel)
+                    const nextQIndex = currentQuestionIndex + 1;
+                    if (nextQIndex === 5 || nextQIndex === 10 || nextQIndex === 16) {
+                        setPhase('milestone');
+                        setOracleState('success');
+                    }
                 } else {
                     // AUDIT COMPLETE - PERSIST & REPORT
                     const scoreResult = calculateScore(newAnswers, sector);
@@ -145,6 +199,7 @@ export default function AssessmentPage() {
                     router.push('/results');
                 }
                 setAnimating(false);
+                setOracleState('idle');
             }, 400);
         }, 1200); 
     }, [currentScoredQ, currentQuestionIndex, answers, sector, contextAnswersState, router, allQuestions]);
@@ -174,7 +229,15 @@ export default function AssessmentPage() {
                                 <div className="text-[10px] font-mono text-white/40 uppercase tracking-[4px]">Readiness Meter</div>
                                 <div className="text-2xl font-grotesk font-black text-white">{Math.round(liveScore)}%</div>
                             </div>
-                            <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden p-1 border border-white/10">
+                            <div className="h-4 w-full bg-white/5 rounded-full overflow-hidden p-1 border border-white/10 relative">
+                                {/* Industry Average Marker */}
+                                <div 
+                                    className="absolute top-0 bottom-0 w-0.5 bg-white/40 z-10 transition-all duration-1000"
+                                    style={{ left: `${benchmark.averageScore}%` }}
+                                >
+                                    <div className="absolute -top-4 -translate-x-1/2 text-[8px] font-mono text-white/30 whitespace-nowrap uppercase">Avg: {benchmark.averageScore}%</div>
+                                </div>
+                                
                                 <div 
                                     className="h-full bg-gradient-to-r from-[var(--cyan)] to-[var(--green)] rounded-full shadow-[0_0_15px_rgba(0,255,255,0.4)] transition-all duration-1000 ease-out"
                                     style={{ width: `${Math.max(liveScore, 5)}%` }}
@@ -182,12 +245,10 @@ export default function AssessmentPage() {
                             </div>
                         </div>
 
-                        <div className="p-4 bg-white/5 border border-white/5 rounded backdrop-blur-md">
-                            <div className="text-[9px] font-mono text-white/30 uppercase mb-2">Current Tier</div>
-                            <div className="text-sm font-grotesk font-bold text-white uppercase italic">
-                                {liveScore < 20 ? '• UN-AWARE CATALYST' : 
-                                 liveScore < 40 ? '• STRATEGIC EXPLORER' : 
-                                 liveScore < 70 ? '• DIGITAL PRACTITIONER' : '• AI LEADER'}
+                        <div className="p-4 bg-white/5 border border-white/5 rounded">
+                            <div className="text-[9px] font-mono text-white/30 uppercase mb-2">Sector Pulse</div>
+                            <div className="text-[10px] font-grotesk font-bold text-white uppercase opacity-70">
+                                {benchmark.count > 0 ? `${benchmark.count} ${sectorLabel} firms audited` : 'Initializing Industry Data'}
                             </div>
                         </div>
                     </div>
@@ -208,13 +269,92 @@ export default function AssessmentPage() {
 
             {/* MAIN CONTENT: Question Card */}
             <div className="flex-1 flex flex-col relative overflow-y-auto">
+                <div className="absolute top-8 right-8 z-30">
+                    <OracleAvatar state={oracleState} message={showTip ? currentTip : (phase === 'intro' ? 'Awaiting System Link...' : '')} />
+                </div>
+
                 {/* Visual Background Elements */}
                 <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-[var(--cyan)]/5 rounded-full blur-[150px] -mr-[300px] -mt-[300px]" />
                 <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-[var(--green)]/5 rounded-full blur-[120px] -ml-[200px] -mb-[200px]" />
 
                 <div className="flex-1 flex items-center justify-center p-6 md:p-20 relative z-10">
-                    <div className={`max-w-xl w-full transition-all duration-500 ${animating ? 'opacity-0 scale-95 translate-y-4' : 'opacity-100 scale-100 translate-y-0'}`}>
+                    <div className={`max-w-xl w-full transition-all duration-700 ${animating ? 'opacity-0 scale-95 translate-y-4' : 'opacity-100 scale-100 translate-y-0'}`}>
                         
+                        {phase === 'milestone' && (
+                            <div className="text-center space-y-12">
+                                <motion.div 
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className="space-y-4"
+                                >
+                                    <div className="font-mono text-[var(--cyan)] text-xs tracking-[8px] uppercase">Section Snapshot</div>
+                                    <h2 className="text-5xl md:text-7xl font-grotesk font-black uppercase leading-[0.9] text-white">
+                                        PHASE <br/> <span className="text-[var(--cyan)]">COMPLETE</span>
+                                    </h2>
+                                    <p className="text-white/60 font-mono tracking-widest text-sm uppercase">Evaluation Logged Successfully</p>
+                                </motion.div>
+
+                                <div className="p-8 bg-white/5 border border-white/10 rounded-2xl space-y-6">
+                                    <div className="flex justify-between items-center text-xs font-mono text-white/40 uppercase">
+                                        <span>Current Maturity</span>
+                                        <span className="text-[var(--cyan)] font-black">{Math.round(liveScore)}%</span>
+                                    </div>
+                                    <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                                        <motion.div 
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${liveScore}%` }}
+                                            className="h-full bg-[var(--cyan)]"
+                                        />
+                                    </div>
+                                    <p className="text-sm font-bold italic text-white/80 leading-snug">
+                                        &quot;Your Foundations are solidifying. We have identified core competitive advantages in your {sectorLabel} data structure. Ready for the next layer.&quot;
+                                    </p>
+                                </div>
+                                
+                                <button 
+                                    onClick={() => {
+                                        setAnimating(true);
+                                        setTimeout(() => {
+                                            setPhase('assessment');
+                                            setAnimating(false);
+                                            setOracleState('idle');
+                                        }, 800);
+                                    }}
+                                    className="px-12 py-5 bg-[var(--cyan)] text-black font-black uppercase text-xl hover:scale-105 transition-transform"
+                                >
+                                    Next Phase →
+                                </button>
+                            </div>
+                        )}
+
+                        {phase === 'intro' && (
+                            <div className="text-center space-y-12">
+                                <motion.div 
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    className="space-y-6"
+                                >
+                                    <h1 className="text-6xl md:text-8xl font-grotesk font-black uppercase italic tracking-tighter leading-none text-white">
+                                        The <span className="text-[var(--cyan)]">Oracle</span>
+                                    </h1>
+                                    <p className="text-white/40 font-mono tracking-[4px] uppercase text-sm">Neural Audit initialization sequence</p>
+                                </motion.div>
+                                
+                                <button 
+                                    onClick={() => {
+                                        setAnimating(true);
+                                        setTimeout(() => {
+                                            setPhase('context');
+                                            setAnimating(false);
+                                        }, 800);
+                                    }}
+                                    className="px-12 py-5 bg-[var(--cyan)] text-black font-black uppercase text-xl hover:scale-105 transition-transform shadow-[0_0_30px_rgba(0,255,255,0.3)]"
+                                >
+                                    Connect Brain
+                                </button>
+                            </div>
+                        )}
+
                         {/* PHASE: CONTEXT */}
                         {phase === 'context' && currentContextQ && (
                             <div className="space-y-10 animate-fade-in-up">
