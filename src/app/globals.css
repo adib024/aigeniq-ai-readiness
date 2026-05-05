@@ -247,6 +247,10 @@ body {
   animation: pulse-glow 3s ease-in-out infinite;
 }
 
+.shadow-orange-glow {
+  filter: drop-shadow(0 0 5px rgba(245, 158, 11, 0.6));
+}
+
 /* Staggered animations */
 .stagger-1 { animation-delay: 0.1s; }
 .stagger-2 { animation-delay: 0.2s; }
@@ -333,11 +337,9 @@ body {
 
 .btn-primary {
   @apply px-8 py-3 bg-[var(--cyan)] text-[var(--black)] font-grotesk font-black text-sm uppercase tracking-widest transition-all duration-300;
-  box-shadow: 4px 4px 0 rgba(0,255,255,0.2);
 }
 .btn-primary:hover {
   @apply bg-[var(--green)] -translate-x-0.5 -translate-y-0.5;
-  box-shadow: 6px 6px 0 rgba(167,244,50,0.3);
 }
 
 .option-btn {

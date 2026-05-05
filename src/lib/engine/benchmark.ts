@@ -40,7 +40,7 @@ export async function getLiveBenchmark(sector: Sector, currentScore: number): Pr
             count: count || 0,
             percentile: Math.round(percentile)
         };
-    } catch (e) {
+    } catch {
         return { averageScore: 35, count: 0, percentile: 50 };
     }
 }

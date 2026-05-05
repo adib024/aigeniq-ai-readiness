@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
     ScoreResult, ContextAnswers, RecommendationCard, DimensionId,
     DIMENSION_NAMES, MATURITY_LABELS, MATURITY_DESCRIPTIONS,
@@ -12,11 +12,9 @@ import { GATE_WARNINGS } from '../../lib/config/gate-warnings.config';
 
 // ── Helpers ──
 const getScoreColorClass = (score: number) => {
-    if (score <= 2.0) return 'l1';
-    if (score <= 4.0) return 'l2';
-    if (score <= 6.0) return 'l3';
-    if (score <= 8.0) return 'l4';
-    return 'l5';
+    if (score <= 4.5) return 'l1'; // Maps to LOW (Red)
+    if (score <= 7.4) return 'l3'; // Maps to MID (Amber)
+    return 'l4'; // Maps to HIGH (Green)
 };
 
 const getMaturityVerb = (stage: MaturityStage) => {
@@ -30,7 +28,29 @@ const getMaturityVerb = (stage: MaturityStage) => {
     }
 };
 
+interface AiReportStep {
+    title: string;
+    description: string;
+}
+
+interface AiReport {
+    executiveSummary: string;
+    executiveSummary2?: string;
+    executiveSummary3?: string;
+    nowStep: AiReportStep;
+    nextStep: AiReportStep;
+    laterStep: AiReportStep;
+}
+
 export default function ResultsPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-black text-[var(--cyan)] font-mono flex items-center justify-center">Loading Report Engine...</div>}>
+            <ResultsContent />
+        </Suspense>
+    );
+}
+
+function ResultsContent() {
     const router = useRouter();
     const [scoreResult, setScoreResult] = useState<ScoreResult | null>(null);
     const [contextAnswers, setContextAnswers] = useState<ContextAnswers | null>(null);
@@ -39,8 +59,41 @@ export default function ResultsPage() {
     const [leadName, setLeadName] = useState('');
     const [leadEmail, setLeadEmail] = useState('');
     const [companyName, setCompanyName] = useState('');
+    const [aiReport, setAiReport] = useState<AiReport | null>(null);
+    const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+
+    const searchParams = useSearchParams();
+    const dbId = searchParams.get('id');
 
     useEffect(() => {
+        if (dbId) {
+            // Magic Link Mode: Load from Supabase
+            fetch(`/api/get-report?id=${dbId}`)
+                .then(r => r.json())
+                .then(res => {
+                    if (res.data) {
+                        setScoreResult({
+                            finalScore: res.data.final_score,
+                            maturityStage: res.data.maturity_stage,
+                            dimensionScores: res.data.scores,
+                            gatesTriggered: res.data.gates_triggered,
+                            gateCap: 10, penaltyApplied: 0, boostApplied: false
+                        });
+                        setContextAnswers(res.data.context_answers);
+                        sessionStorage.setItem('aigeniq_answers', JSON.stringify(res.data.assessment_answers));
+                        setLeadName(res.data.lead_name);
+                        setLeadEmail(res.data.lead_email);
+                        setCompanyName(res.data.company_name);
+                        setGateUnlocked(true);
+                    } else {
+                        router.push('/');
+                    }
+                })
+                .catch(() => router.push('/'));
+            return;
+        }
+
+        // Normal Mode: Load from Session Storage
         const scoreData = sessionStorage.getItem('aigeniq_score');
         const contextData = sessionStorage.getItem('aigeniq_context');
 
@@ -54,10 +107,43 @@ export default function ResultsPage() {
 
         const cardsData = sessionStorage.getItem('aigeniq_cards');
         if (cardsData) setCards(JSON.parse(cardsData));
+    }, [router, dbId]);
 
-        // const matrixData = sessionStorage.getItem('aigeniq_matrix');
-        // if (matrixData) setMatrix(JSON.parse(matrixData));
-    }, [router]);
+    useEffect(() => {
+        if (gateUnlocked && !aiReport && !isGeneratingReport && scoreResult && contextAnswers) {
+            const sortedDims = (Object.keys(DIMENSION_NAMES) as DimensionId[]).sort(
+                (a, b) => scoreResult.dimensionScores[a] - scoreResult.dimensionScores[b]
+            );
+
+            const generateClaudeReport = async () => {
+                setIsGeneratingReport(true);
+                try {
+                    const res = await fetch('/api/generate-report', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            sector: contextAnswers.sector,
+                            companySize: contextAnswers.companySize,
+                            aiToolsUsed: contextAnswers.aiToolsUsed,
+                            priorityAreas: contextAnswers.priorityAreas,
+                            finalScore: scoreResult.finalScore,
+                            maturityStage: scoreResult.maturityStage,
+                            highestDimension: DIMENSION_NAMES[sortedDims[7]],
+                            lowestDimension: DIMENSION_NAMES[sortedDims[0]],
+                            assessmentAnswers: JSON.parse(sessionStorage.getItem('aigeniq_answers') || '{}')
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.report) setAiReport(data.report);
+                } catch (e) {
+                    console.error("Failed to generate AI report", e);
+                } finally {
+                    setIsGeneratingReport(false);
+                }
+            };
+            generateClaudeReport();
+        }
+    }, [gateUnlocked, aiReport, isGeneratingReport, scoreResult, contextAnswers]);
 
     if (!scoreResult || !contextAnswers) {
         return (
@@ -101,6 +187,8 @@ export default function ResultsPage() {
             email: leadEmail || 'guest@aigeniq.ai', 
             company: companyName || 'The Organization' 
         }));
+
+        // The generateClaudeReport is now triggered automatically by the useEffect watching gateUnlocked=true
 
         try {
             // Save to Supabase (Background)
@@ -176,8 +264,21 @@ export default function ResultsPage() {
                         Executive Summary
                     </div>
                     <div className="hero-summary-text text-[14px] leading-[1.75] text-[var(--black)]">
-                        {MATURITY_DESCRIPTIONS[scoreResult.maturityStage]} Based on your responses, {companyName || 'the organization'} is currently at the <strong>{MATURITY_LABELS[scoreResult.maturityStage]}</strong> stage. 
-                        Your strongest areas provide a foundation for scaling, while specific gaps in {DIMENSION_NAMES[sortedDims[0]]} and {DIMENSION_NAMES[sortedDims[1]]} represent the most immediate leverage points for improvement.
+                        {isGeneratingReport ? (
+                            <span className="animate-pulse flex items-center gap-2">
+                                <span className="w-2 h-2 bg-black rounded-full animate-bounce"></span>
+                                The AiGENiQ Audit Engine is synthesizing your readiness profile...
+                            </span>
+                        ) : aiReport ? (
+                            <div className="space-y-4">
+                                {(aiReport.executiveSummary + (aiReport.executiveSummary2 ? '\n\n' + aiReport.executiveSummary2 : '') + (aiReport.executiveSummary3 ? '\n\n' + aiReport.executiveSummary3 : '')).split('\n\n').map((p: string, i: number) => <p key={i}>{p}</p>)}
+                            </div>
+                        ) : (
+                            <>
+                                {MATURITY_DESCRIPTIONS[scoreResult.maturityStage]} Based on your responses, {companyName || 'the organization'} is currently at the <strong>{MATURITY_LABELS[scoreResult.maturityStage]}</strong> stage. 
+                                Your strongest areas provide a foundation for scaling, while specific gaps in {DIMENSION_NAMES[sortedDims[0]]} and {DIMENSION_NAMES[sortedDims[1]]} represent the most immediate leverage points for improvement.
+                            </>
+                        )}
                     </div>
                     <div className="mt-[14px] p-[12px_16px] bg-black/15 rounded-sm border-l-[3px] border-black text-[12px] text-[var(--g40)] leading-[1.65] font-inter">
                         <strong className="text-black font-grotesk font-bold">About this report.</strong> This is a deterministic readiness assessment calculated using the AiGENiQ 8-dimension framework. It identifies where to focus resources and how to sequence your AI roadmap for maximum ROI and compliance.
@@ -353,7 +454,7 @@ export default function ResultsPage() {
                                                         className="bar-fill" 
                                                         style={{ 
                                                             width: `${scorePercent}%`,
-                                                            backgroundColor: colorClass === 'l1' ? 'var(--l1c)' : colorClass === 'l2' ? 'var(--l2c)' : colorClass === 'l3' ? 'var(--l3c)' : colorClass === 'l4' ? 'var(--l4c)' : 'var(--l5c)'
+                                                            backgroundColor: colorClass === 'l1' ? 'var(--l1c)' : colorClass === 'l3' ? 'var(--l3c)' : 'var(--l4c)'
                                                         }}
                                                     />
                                                 </div>
@@ -362,7 +463,7 @@ export default function ResultsPage() {
                                                 <span 
                                                     className="font-mono font-bold text-[11px] p-[3px_9px] rounded-sm text-white"
                                                     style={{ 
-                                                        backgroundColor: colorClass === 'l1' ? 'var(--l1c)' : colorClass === 'l2' ? 'var(--l2c)' : colorClass === 'l3' ? 'var(--l3c)' : colorClass === 'l4' ? 'var(--l4c)' : 'var(--l5c)'
+                                                        backgroundColor: colorClass === 'l1' ? 'var(--l1c)' : colorClass === 'l3' ? 'var(--l3c)' : 'var(--l4c)'
                                                     }}
                                                 >
                                                     {getDiagnosticLevel(score)}
@@ -437,7 +538,17 @@ export default function ResultsPage() {
                                 <div className="rmcol">
                                     <div className="rmhead now">NOW <span className="float-right text-[9px] opacity-60">0–30 days</span></div>
                                     <div className="rmcards">
-                                        {nowCards.length > 0 ? nowCards.map(card => (
+                                        {isGeneratingReport ? (
+                                            <p className="text-[10px] text-[var(--g60)] italic p-4 animate-pulse">Engine is mapping your optimal roadmap...</p>
+                                        ) : aiReport ? (
+                                            <div className="rmc flagged">
+                                                <div className="rct">{aiReport.nowStep.title}</div>
+                                                <div className="rcd font-inter">{aiReport.nowStep.description}</div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <span className="rcown">Priority Action</span>
+                                                </div>
+                                            </div>
+                                        ) : nowCards.length > 0 ? nowCards.map(card => (
                                             <div key={card.id} className={`rmc ${scoreResult.gatesTriggered.some(g => g.startsWith(card.triggerDimension)) ? 'flagged' : ''}`}>
                                                 <div className="rct">{card.title}</div>
                                                 <div className="rcd font-inter">{card.whyItMatters}</div>
@@ -452,7 +563,17 @@ export default function ResultsPage() {
                                 <div className="rmcol">
                                     <div className="rmhead next">NEXT <span className="float-right text-[9px] opacity-60">1–3 months</span></div>
                                     <div className="rmcards">
-                                        {nextCards.length > 0 ? nextCards.map(card => (
+                                        {isGeneratingReport ? (
+                                            <p className="text-[10px] text-[var(--g60)] italic p-4 animate-pulse">Engine is mapping your optimal roadmap...</p>
+                                        ) : aiReport ? (
+                                            <div className="rmc">
+                                                <div className="rct">{aiReport.nextStep.title}</div>
+                                                <div className="rcd font-inter">{aiReport.nextStep.description}</div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <span className="rcown">Strategic Move</span>
+                                                </div>
+                                            </div>
+                                        ) : nextCards.length > 0 ? nextCards.map(card => (
                                             <div key={card.id} className="rmc">
                                                 <div className="rct">{card.title}</div>
                                                 <div className="rcd font-inter">{card.whyItMatters}</div>
@@ -467,7 +588,17 @@ export default function ResultsPage() {
                                 <div className="rmcol">
                                     <div className="rmhead later">LATER <span className="float-right text-[9px] opacity-60">3–12 months</span></div>
                                     <div className="rmcards">
-                                        {laterCards.length > 0 ? laterCards.map(card => (
+                                        {isGeneratingReport ? (
+                                            <p className="text-[10px] text-[var(--g60)] italic p-4 animate-pulse">Engine is mapping your optimal roadmap...</p>
+                                        ) : aiReport ? (
+                                            <div className="rmc">
+                                                <div className="rct">{aiReport.laterStep.title}</div>
+                                                <div className="rcd font-inter">{aiReport.laterStep.description}</div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    <span className="rcown">Long-Term Vision</span>
+                                                </div>
+                                            </div>
+                                        ) : laterCards.length > 0 ? laterCards.map(card => (
                                             <div key={card.id} className="rmc">
                                                 <div className="rct">{card.title}</div>
                                                 <div className="rcd font-inter">{card.whyItMatters}</div>

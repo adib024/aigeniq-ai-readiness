@@ -22,7 +22,7 @@ export default function OracleAvatar({ state = 'idle', message }: OracleAvatarPr
             className="mb-8 p-4 bg-black/40 border border-white/10 backdrop-blur-xl rounded-2xl max-w-xs shadow-2xl relative"
           >
             <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-black/40 border-r border-b border-white/10 rotate-45" />
-            <p className="text-[11px] font-bold leading-tight italic uppercase tracking-wider text-[var(--cyan)] text-center">
+            <p className="text-[11px] font-bold leading-tight uppercase tracking-wider text-[var(--cyan)] text-center">
               {message}
             </p>
           </motion.div>

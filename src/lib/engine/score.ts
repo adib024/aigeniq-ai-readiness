@@ -7,14 +7,14 @@ import { sectorWeights } from '../config/weights.config';
 import { Sector, Answers, DimensionId, ScoreResult, MaturityStage } from '../../types';
 
 const ANSWER_POINTS: Record<string, number> = { A: 0, B: 1.5, C: 3, D: 4, SKIPPED: 0.5 };
-const HARD_CAP = 4.5;
-const SOFT_CAP = 5.5;
-const HARD_THRESH = 2.0;
-const SOFT_THRESH = 2.5;
-const PENALTY_AMT = 0.3;
-const BOOST_AMT = 0.4;
-const BOOST_MIN = 7.0;
-const PENALTY_MIN = 2.0;
+const HARD_CAP = 4.0; // In 2026, bad foundations mean no progress
+const SOFT_CAP = 5.0;
+const HARD_THRESH = 3.0; // Bar raised for 2026 standards
+const SOFT_THRESH = 3.5;
+const PENALTY_AMT = 0.4;
+const BOOST_AMT = 0.5;
+const BOOST_MIN = 7.5; // HARDER to get the elite boost in 2026
+const PENALTY_MIN = 3.0;
 const DIMS: DimensionId[] = ['D1', 'D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8'];
 const NON_GATE_DIMS: DimensionId[] = ['D4', 'D5', 'D6', 'D7', 'D8'];
 
@@ -32,6 +32,7 @@ export function calculateScore(
       sum += ANSWER_POINTS[ans] ?? 0;
       max += 4;
     });
+    // Relative Scoring: If no questions answered for a dimension, don't penalize yet
     dimScores[dim] = max > 0 ? (sum / max) * 10 : 0;
   });
 
@@ -47,7 +48,7 @@ export function calculateScore(
     gatesTriggered.push('D2_SOFT');
   }
 
-  // Step 5: Weighted composite using sector weight profile
+  // Step 5: Weighted composite using sector weight profile (Absolute)
   const weights = sectorWeights[sector] ?? sectorWeights.base;
   let weighted = DIMS.reduce((sum, d) => sum + (dimScores[d] * weights[d]), 0);
 

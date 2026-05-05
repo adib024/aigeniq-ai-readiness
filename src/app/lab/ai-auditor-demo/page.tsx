@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ─── DEMO DATA ───
@@ -40,18 +40,18 @@ export default function AvatarDemo() {
   const [message, setMessage] = useState('');
   const [score, setScore] = useState(0);
 
+  const speak = useCallback((text: string, state: typeof avatarState, duration = 3000) => {
+    setMessage(text);
+    setAvatarState(state);
+    setTimeout(() => setAvatarState('idle'), duration);
+  }, []);
+
   // ─── AVATAR SPEECH LOGIC ───
   useEffect(() => {
     if (step === 'intro') {
       speak("Greetings. I am the AiGENiQ Core. I will be your auditor today. Let's begin the link.", 'talking');
     }
-  }, [step]);
-
-  const speak = (text: string, state: typeof avatarState, duration = 3000) => {
-    setMessage(text);
-    setAvatarState(state);
-    setTimeout(() => setAvatarState('idle'), duration);
-  };
+  }, [step, speak]);
 
   const handleAnswer = (trait: 'risk' | 'strength') => {
     const q = demoQuestions[qIndex];

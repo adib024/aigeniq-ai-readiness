@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Oracle Demo</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050505;
+            color: white;
+            font-family: monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Controls */
+        .controls {
+            position: absolute;
+            bottom: 40px;
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+        
+        button {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 10px 20px;
+            font-family: monospace;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            border-color: #00ffff;
+            background: rgba(0,255,255,0.1);
+        }
+
+        /* The Oracle Container */
+        .oracle-container {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s ease-out; /* Smooth mouse follow */
+            animation: float 4s ease-in-out infinite; /* Base float */
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+
+        /* Oracle Rings */
+        .ring {
+            position: absolute;
+            border-radius: 50%;
+            transition: all 0.8s ease;
+        }
+
+        .ring-outer {
+            width: 100%;
+            height: 100%;
+            border: 1px dashed rgba(0, 255, 255, 0.4);
+            animation: spin 10s linear infinite;
+        }
+
+        .ring-inner {
+            width: 70%;
+            height: 70%;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            animation: spin-reverse 15s linear infinite;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes spin-reverse { 100% { transform: rotate(-360deg); } }
+
+        /* Oracle Core */
+        .core {
+            width: 50px;
+            height: 50px;
+            background: rgba(0, 255, 255, 0.2);
+            border: 2px solid #00ffff;
+            border-radius: 50%;
+            box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.5s ease;
+            position: relative;
+        }
+
+        .core-pulse {
+            width: 15px;
+            height: 15px;
+            background: white;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            transition: all 0.5s ease;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(0.8); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 1; }
+        }
+
+        /* States */
+        body.state-warning .ring-outer { border-color: rgba(249, 115, 22, 0.4); }
+        body.state-warning .core {
+            background: rgba(249, 115, 22, 0.2);
+            border-color: #f97316;
+            box-shadow: 0 0 40px rgba(249, 115, 22, 0.6);
+            transform: scale(0.9);
+            animation: shake 0.5s infinite; /* Nervous vibration */
+        }
+        body.state-warning .core-pulse { background: #fbd38d; }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0) scale(0.9); }
+            25% { transform: translateX(-2px) scale(0.9); }
+            75% { transform: translateX(2px) scale(0.9); }
+        }
+
+        body.state-success .ring-outer { border-color: rgba(52, 211, 153, 0.4); }
+        body.state-success .core {
+            background: rgba(52, 211, 153, 0.2);
+            border-color: #34d399;
+            box-shadow: 0 0 50px rgba(52, 211, 153, 0.8);
+            transform: scale(1.3); /* Expand confidently */
+        }
+        body.state-success .core-pulse { background: #a7f3d0; }
+
+        body.state-thinking .core {
+            transform: scale(1.1);
+        }
+        body.state-thinking .core-pulse {
+            animation: thinking-pulse 0.5s infinite; /* Rapid processing */
+        }
+        @keyframes thinking-pulse {
+            0%, 100% { transform: scale(0.5); opacity: 0.5; }
+            50% { transform: scale(1.5); opacity: 1; }
+        }
+
+        /* Speech Bubble */
+        .speech-bubble {
+            position: absolute;
+            top: -80px;
+            background: rgba(0,0,0,0.8);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 12px;
+            max-width: 250px;
+            text-align: center;
+            opacity: 0;
+            transform: translateY(10px);
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            line-height: 1.4;
+            color: #00ffff;
+        }
+
+        .speech-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%) rotate(45deg);
+            width: 10px;
+            height: 10px;
+            background: rgba(0,0,0,0.8);
+            border-right: 1px solid rgba(0, 255, 255, 0.3);
+            border-bottom: 1px solid rgba(0, 255, 255, 0.3);
+        }
+
+        .speech-bubble.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Typewriter cursor */
+        .cursor {
+            display: inline-block;
+            width: 6px;
+            height: 12px;
+            background-color: #00ffff;
+            animation: blink 1s infinite;
+            vertical-align: middle;
+            margin-left: 2px;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="oracle-container" id="oracle">
+        <div class="speech-bubble" id="bubble"><span id="text"></span><span class="cursor"></span></div>
+        <div class="ring ring-outer"></div>
+        <div class="ring ring-inner"></div>
+        <div class="core">
+            <div class="core-pulse"></div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button onclick="setState('idle', 'Awaiting your input...')">Idle Mode</button>
+        <button onclick="setState('thinking', 'Processing data points...')">Thinking Mode</button>
+        <button onclick="setState('success', 'Strategic Move: Excellent framework detected.')">Success Mode</button>
+        <button onclick="setState('warning', 'Risk Alert: Isolated systems detected.')">Warning Mode</button>
+    </div>
+
+    <script>
+        const oracle = document.getElementById('oracle');
+        const body = document.body;
+        const textSpan = document.getElementById('text');
+        const bubble = document.getElementById('bubble');
+        
+        let typingInterval;
+
+        // Mouse tracking logic (Subtle parallax)
+        document.addEventListener('mousemove', (e) => {
+            const x = (e.clientX / window.innerWidth - 0.5) * 40; // max 20px shift
+            const y = (e.clientY / window.innerHeight - 0.5) * 40;
+            // Apply translation while preserving the animation float by wrapping it or using CSS variables
+            oracle.style.transform = `translate(${x}px, ${y}px)`;
+        });
+
+        // Dynamic Typing Logic
+        function typeText(text) {
+            clearInterval(typingInterval);
+            textSpan.textContent = '';
+            bubble.classList.add('active');
+            
+            let i = 0;
+            typingInterval = setInterval(() => {
+                if (i < text.length) {
+                    textSpan.textContent += text.charAt(i);
+                    i++;
+                } else {
+                    clearInterval(typingInterval);
+                }
+            }, 30); // Speed of typing
+        }
+
+        // State Machine
+        function setState(state, message) {
+            body.className = ''; // reset
+            if (state !== 'idle') body.classList.add(`state-${state}`);
+            
+            // Update bubble color based on state
+            if(state === 'warning') bubble.style.color = '#f97316';
+            else if(state === 'success') bubble.style.color = '#34d399';
+            else bubble.style.color = '#00ffff';
+
+            typeText(message);
+        }
+
+        // Init
+        setTimeout(() => setState('idle', 'Engine initialized. Observing...'), 500);
+
+    </script>
+</body>
+</html>

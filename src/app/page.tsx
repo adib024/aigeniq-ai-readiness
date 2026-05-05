@@ -43,7 +43,6 @@ export default function HomePage() {
         ))}
       </div>
 
-      {/* Footer - Identical to Mockup */}
       <footer className="ml-[140px] p-10 font-mono text-[11px] text-[var(--cyan)] uppercase">
         [ AiGENiQ READINESS PLATFORM ]
       </footer>
